@@ -127,7 +127,15 @@ function saveCurrentCrop() {
             width: currentCrop.width / imageData.naturalWidth,
             height: currentCrop.height / imageData.naturalHeight,
         };
-        cropperState.pageCrops[cropperState.currentPageNum] = cropPercentages;
+
+        const isApplyToAll = (document.getElementById('apply-to-all-toggle') as HTMLInputElement)?.checked;
+        if (isApplyToAll) {
+            for (let i = 0; i < cropperState.pdfDoc.numPages; i++) {
+                cropperState.pageCrops[i] = cropPercentages;
+            }
+        } else {
+            cropperState.pageCrops[cropperState.currentPageNum] = cropPercentages;
+        }
     }
 }
 
@@ -165,22 +173,23 @@ async function displayPageAsImage(num: number) {
                 responsive: true,
                 rotatable: false,
                 zoomable: false,
+                ready: () => {
+                    const savedCrop = cropperState.pageCrops[num];
+                    if (savedCrop) {
+                        const imageData = cropperState.cropper.getImageData();
+                        cropperState.cropper.setData({
+                            x: savedCrop.x * imageData.naturalWidth,
+                            y: savedCrop.y * imageData.naturalHeight,
+                            width: savedCrop.width * imageData.naturalWidth,
+                            height: savedCrop.height * imageData.naturalHeight,
+                        });
+                    }
+
+                    updatePageInfo();
+                    enableControls();
+                    hideLoader();
+                },
             });
-
-            const savedCrop = cropperState.pageCrops[num];
-            if (savedCrop) {
-                const imageData = cropperState.cropper.getImageData();
-                cropperState.cropper.setData({
-                    x: savedCrop.x * imageData.naturalWidth,
-                    y: savedCrop.y * imageData.naturalHeight,
-                    width: savedCrop.width * imageData.naturalWidth,
-                    height: savedCrop.height * imageData.naturalHeight,
-                });
-            }
-
-            updatePageInfo();
-            enableControls();
-            hideLoader();
         };
     } catch (error) {
         console.error('Error rendering page:', error);
@@ -217,24 +226,8 @@ async function performCrop() {
     saveCurrentCrop();
 
     const isDestructive = (document.getElementById('destructive-crop-toggle') as HTMLInputElement)?.checked;
-    const isApplyToAll = (document.getElementById('apply-to-all-toggle') as HTMLInputElement)?.checked;
 
-    let finalCropData: Record<number, any> = {};
-
-    if (isApplyToAll) {
-        const currentCrop = cropperState.pageCrops[cropperState.currentPageNum];
-        if (!currentCrop) {
-            showAlert('No Crop Area', 'Please select an area to crop first.');
-            return;
-        }
-        for (let i = 1; i <= cropperState.pdfDoc.numPages; i++) {
-            finalCropData[i] = currentCrop;
-        }
-    } else {
-        finalCropData = { ...cropperState.pageCrops };
-    }
-
-    if (Object.keys(finalCropData).length === 0) {
+    if (Object.keys(cropperState.pageCrops).length === 0) {
         showAlert('No Crop Area', 'Please select an area on at least one page to crop.');
         return;
     }
@@ -244,9 +237,9 @@ async function performCrop() {
     try {
         let finalPdfBytes;
         if (isDestructive) {
-            finalPdfBytes = await performFlatteningCrop(finalCropData);
+            finalPdfBytes = await performFlatteningCrop(cropperState.pageCrops);
         } else {
-            finalPdfBytes = await performMetadataCrop(finalCropData);
+            finalPdfBytes = await performMetadataCrop(cropperState.pageCrops);
         }
 
         const fileName = isDestructive ? 'flattened_crop.pdf' : 'standard_crop.pdf';
